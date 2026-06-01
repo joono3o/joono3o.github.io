@@ -21,7 +21,9 @@
 
 # Evaluation & Analysis
 Methodology의 1단계를 실행한 결과는 다음과 같다.
+
 <img width="596" height="403" alt="jinx threshold" src="https://github.com/user-attachments/assets/1f3cf198-d723-4e48-bcff-a0ddff3ef1e8" />
+
 모든 선수들의 OPS를 통해 징크스의 기준을 잡았다. 징크스의 기준은 루키 시즌에 비해 OPS가 0.112보다 크게 감소한 것으로 정했다.
 
 
