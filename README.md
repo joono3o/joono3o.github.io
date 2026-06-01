@@ -4,6 +4,8 @@
 이승현 2026030200
 
 # 데이터셋
+루키와 소포모어 시즌의 타석 수가 너무 적지 않은 1950년~2011년 대뷔 선수 200명을 데이터로 삼음.
+
 소포모어 스텟: [mlb_sophomore_hitting_stats.csv](https://github.com/user-attachments/files/28455758/mlb_sophomore_hitting_stats.csv)
 
 루키 스텟: [mlb_rookie_hitting_stats.csv](https://github.com/user-attachments/files/28455760/mlb_rookie_hitting_stats.csv)
