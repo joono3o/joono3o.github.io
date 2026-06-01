@@ -1,6 +1,8 @@
 # AI+X 딥러닝 기말 프로젝트
 배경준 2026026026 elsovlse@hanyang.ac.kr
+
 이환 2026077947 lhweane@hanyang.ac.kr
+
 이승현 2026030200 lshlsh8503@gmail.com
 
 # Motivation
