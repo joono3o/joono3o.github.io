@@ -20,7 +20,7 @@
 2. 로지스틱 회귀를 활용하여 징크스를 겪은 선수들과 그렇지 않은 선수들을 나눈 요인을 찾아본다.
 
 # Evaluation & Analysis
-Methodology의 1단계를 실행한 결과는 다음과 같다.
+Methodology의 1단계를 실행한 결과는 다음과 같다. (threshold.py 참고)
 
 <img width="596" height="403" alt="jinx threshold" src="https://github.com/user-attachments/assets/1f3cf198-d723-4e48-bcff-a0ddff3ef1e8" />
 <img width="612" height="561" alt="jinxed players" src="https://github.com/user-attachments/assets/0956306c-ace5-414b-8828-0a9df111765f" />
@@ -29,7 +29,7 @@ Methodology의 1단계를 실행한 결과는 다음과 같다.
 징크스를 겪은 선수는 총 23명 뿐, 전체 선수들 중 12%이다. 2단계에서 오버피팅을 피해야 함을 주의해야한다.
 
 
-Methodology의 2단계를 실행한 결과는 다음과 같다.
+Methodology의 2단계를 실행한 결과는 다음과 같다. (pred_model.py 참고)
 
 <img width="927" height="317" alt="화면 캡처 2026-06-08 013230" src="https://github.com/user-attachments/assets/71a2f972-3ca8-4d51-8395-679de62c1183" />
 <img width="926" height="237" alt="화면 캡처 2026-06-08 013253" src="https://github.com/user-attachments/assets/c01a6f33-a140-4da6-959a-89064f3714fe" />
@@ -39,10 +39,6 @@ Methodology의 2단계를 실행한 결과는 다음과 같다.
 
 두번째 표는 모델이 징크스를 예측한 결과를 보여주는 표이다. 표에서 보이듯이 위양성이 54개로 정확히 예측한 15개를 크게 웃도는 수치다. 마지막 그래프에서 알 수 있듯이 정확도는 0.678 정도로 무작위로 예측하는 경우일 때(대략 0.5 정확도)보다는 좋은 성능을 보여주지만, 그리 높은 정확도는 아니다. 전체 데이터량이 192명의 선수에 불과해서 이러한 결과가 나온 것으로 보인다.
 
-
-
-# Related work
-
-
 # Conclusion
+
 
