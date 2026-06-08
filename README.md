@@ -11,7 +11,7 @@
 # Datasets
 루키와 소포모어 시즌의 타석 수가 너무 적지 않은 1950년~2011년 데뷔 선수 200명을 데이터로 삼았다. (1)은 첫 학습에서 사용된 데이터셋으로, 데이터의 양이 선수 200명 남짓으로 적다. (2)는 (1)의 문제를 보완한 데이터셋으로, 선수를 1000명으로 늘렸다.
 
-다음 코드들은 깃헙의 Lahman baseball database에서 데이터를 추출하기 위해 사용되었다.
+깃헙의 Lahman baseball database에서 데이터셋을 구한 과정은 다음과 같다.
 
 1. Lahman baseball database에 접근
 ```{python}
@@ -662,11 +662,480 @@ print(final.sort_values('OPS', ascending=False)[['Player_Name', 'Rookie_Year', '
 final.to_csv('/mnt/user-data/outputs/mlb_rookie_hitting_stats.csv', index=True, index_label='Rank_by_Year')
 print("\nSaved!")
 ```
+6. 소포모어 시즌 데이터셋 구하기
+```{python}
+import requests, io
+import pandas as pd
+
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+rookies = pd.read_csv('/mnt/user-data/outputs/mlb_rookie_hitting_stats.csv')
+print(rookies[['Player_ID', 'Player_Name', 'Rookie_Year']].head(5))
+print(f"Total players: {len(rookies)}")
+
+r = requests.get("https://raw.githubusercontent.com/maxtoki/baseball_R/master/data/Batting.csv", headers=headers, timeout=30)
+batting = pd.read_csv(io.StringIO(r.text))
+
+yearly = batting.groupby(['playerID', 'yearID']).agg({
+    'G': 'sum', 'AB': 'sum', 'R': 'sum', 'H': 'sum',
+    '2B': 'sum', '3B': 'sum', 'HR': 'sum', 'RBI': 'sum',
+    'SB': 'sum', 'CS': 'sum', 'BB': 'sum', 'SO': 'sum',
+    'HBP': 'sum', 'SF': 'sum'
+}).reset_index()
+
+soph_years = rookies[['Player_ID', 'Player_Name', 'Rookie_Year']].copy()
+soph_years['Sophomore_Year'] = soph_years['Rookie_Year'] + 1
+
+soph_stats = soph_years.merge(
+    yearly,
+    left_on=['Player_ID', 'Sophomore_Year'],
+    right_on=['playerID', 'yearID'],
+    how='left'
+)
+
+print(f"\nPlayers with sophomore data: {soph_stats['AB'].notna().sum()}")
+print(f"Players missing sophomore data: {soph_stats['AB'].isna().sum()}")
+
+missing = soph_stats[soph_stats['AB'].isna()][['Player_Name', 'Rookie_Year', 'Sophomore_Year']]
+print("\nMissing sophomore seasons:")
+print(missing.to_string(index=False))
+```
+```{python}
+import requests, io
+import pandas as pd
+
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+rookies = pd.read_csv('/mnt/user-data/outputs/mlb_rookie_hitting_stats.csv')
+r = requests.get("https://raw.githubusercontent.com/maxtoki/baseball_R/master/data/Batting.csv", headers=headers, timeout=30)
+batting = pd.read_csv(io.StringIO(r.text))
+
+yearly = batting.groupby(['playerID', 'yearID']).agg({
+    'G': 'sum', 'AB': 'sum', 'R': 'sum', 'H': 'sum',
+    '2B': 'sum', '3B': 'sum', 'HR': 'sum', 'RBI': 'sum',
+    'SB': 'sum', 'CS': 'sum', 'BB': 'sum', 'SO': 'sum',
+    'HBP': 'sum', 'SF': 'sum'
+}).reset_index()
+
+all_years = yearly[['playerID', 'yearID']].copy()
+
+player_years = all_years.groupby('playerID')['yearID'].apply(sorted).reset_index()
+player_years.columns = ['playerID', 'all_years']
+
+def get_second_season(pid, years_dict):
+    years = years_dict.get(pid, [])
+    return years[1] if len(years) >= 2 else None
+
+years_dict = dict(zip(player_years['playerID'], player_years['all_years']))
+
+soph_years = rookies[['Player_ID', 'Player_Name', 'Rookie_Year']].copy()
+soph_years['Sophomore_Year'] = soph_years['Player_ID'].apply(
+    lambda pid: get_second_season(pid, years_dict)
+)
+
+print("Sophomore years assigned:")
+print(soph_years[soph_years['Sophomore_Year'].notna()].tail(5))
+
+missing_check = soph_years[soph_years['Player_ID'].isin([
+    'jacobbu02', 'mathejo02', 'lawribr01', 'kipnija01', 'perezsa02',
+    'goldspa01', 'hosmeer01', 'thameer01', 'cunnijo01', 'brandja01',
+    'whitebi03', 'baxesji01'
+])]
+print("\nPreviously missing players:")
+print(missing_check.to_string(index=False))
+```
+```{python}
+import requests, io
+import pandas as pd
+
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+rookies = pd.read_csv('/mnt/user-data/outputs/mlb_rookie_hitting_stats.csv')
+r = requests.get("https://raw.githubusercontent.com/maxtoki/baseball_R/master/data/Batting.csv", headers=headers, timeout=30)
+batting = pd.read_csv(io.StringIO(r.text))
+
+yearly = batting.groupby(['playerID', 'yearID']).agg({
+    'G': 'sum', 'AB': 'sum', 'R': 'sum', 'H': 'sum',
+    '2B': 'sum', '3B': 'sum', 'HR': 'sum', 'RBI': 'sum',
+    'SB': 'sum', 'CS': 'sum', 'BB': 'sum', 'SO': 'sum',
+    'HBP': 'sum', 'SF': 'sum'
+}).reset_index()
+
+player_years = yearly.groupby('playerID')['yearID'].apply(sorted).reset_index()
+player_years.columns = ['playerID', 'all_years']
+years_dict = dict(zip(player_years['playerID'], player_years['all_years']))
+
+def get_second_season(pid):
+    years = years_dict.get(pid, [])
+    return years[1] if len(years) >= 2 else None
+
+soph_years = rookies[['Player_ID', 'Player_Name', 'Rookie_Year']].copy()
+soph_years['Sophomore_Year'] = soph_years['Player_ID'].apply(get_second_season)
+
+soph_stats = soph_years.merge(
+    yearly,
+    left_on=['Player_ID', 'Sophomore_Year'],
+    right_on=['playerID', 'yearID'],
+    how='left'
+)
+
+soph_stats['AVG'] = (soph_stats['H'] / soph_stats['AB']).round(3)
+soph_stats['OBP'] = ((soph_stats['H'] + soph_stats['BB'] + soph_stats['HBP']) /
+    (soph_stats['AB'] + soph_stats['BB'] + soph_stats['HBP'] + soph_stats['SF'])).round(3)
+soph_stats['SLG'] = ((soph_stats['H'] + soph_stats['2B'] + 2*soph_stats['3B'] + 3*soph_stats['HR']) /
+    soph_stats['AB']).round(3)
+soph_stats['OPS'] = (soph_stats['OBP'] + soph_stats['SLG']).round(3)
+
+final = soph_stats[[
+    'Player_ID', 'Player_Name', 'Rookie_Year', 'Sophomore_Year',
+    'G', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI',
+    'SB', 'CS', 'BB', 'SO', 'HBP', 'AVG', 'OBP', 'SLG', 'OPS'
+]].copy()
+
+int_cols = ['G', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'SB', 'CS', 'BB', 'SO', 'HBP']
+for col in int_cols:
+    final[col] = final[col].fillna(0).astype(int)
+
+final['Sophomore_Year'] = final['Sophomore_Year'].fillna('N/A - Beyond Dataset').astype(str).str.replace('.0', '', regex=False)
+
+final = final.reset_index(drop=True)
+final.index += 1
+
+print(f"Shape: {final.shape}")
+print(f"Players with full soph stats: {(final['AB'] > 0).sum()}")
+print(f"Players beyond dataset (2012+): {(final['Sophomore_Year'] == 'N/A - Beyond Dataset').sum()}")
+print(f"\nSample:")
+print(final[['Player_Name', 'Rookie_Year', 'Sophomore_Year', 'G', 'AB', 'HR', 'RBI', 'AVG', 'OPS']].head(15).to_string())
+
+final.to_csv('/mnt/user-data/outputs/mlb_sophomore_hitting_stats.csv', index=True, index_label='Rank')
+print("\nSaved!")
+```
 
 
 소포모어 스텟 (1): [mlb_sophomore_hitting_stats.csv](https://github.com/user-attachments/files/28455758/mlb_sophomore_hitting_stats.csv)
 
 루키 스텟 (1): [mlb_rookie_hitting_stats.csv](https://github.com/user-attachments/files/28455760/mlb_rookie_hitting_stats.csv)
+
+
+딥러닝 모델까지 모두 실행한 후 데이터가 더 필요하다고 느껴 새 데이터셋을 다음 과정으로 구했다.
+
+1. 기존 파일 읽기
+```{python}
+import pandas as pd
+rookie = pd.read_csv('/mnt/user-data/uploads/mlb_rookie_hitting_stats.csv', nrows=3)
+soph   = pd.read_csv('/mnt/user-data/uploads/mlb_sophomore_hitting_stats.csv', nrows=3)
+print("Rookie cols:", rookie.columns.tolist())
+print(rookie.head(2))
+print("\nSoph cols:", soph.columns.tolist())
+print(soph.head(2))
+```
+2. Lahman database에서 데이터 불러오기
+```{python}
+import requests, io, pandas as pd
+
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+r = requests.get("https://raw.githubusercontent.com/maxtoki/baseball_R/master/data/Batting.csv", headers=headers, timeout=30)
+batting = pd.read_csv(io.StringIO(r.text))
+print(f"Full batting data: {batting.shape}")
+print(f"Year range: {batting['yearID'].min()} - {batting['yearID'].max()}")
+print(f"Unique players: {batting['playerID'].nunique()}")
+
+yearly = batting.groupby(['playerID', 'yearID']).agg({
+    'G': 'sum', 'AB': 'sum', 'R': 'sum', 'H': 'sum',
+    '2B': 'sum', '3B': 'sum', 'HR': 'sum', 'RBI': 'sum',
+    'SB': 'sum', 'CS': 'sum', 'BB': 'sum', 'SO': 'sum',
+    'HBP': 'sum', 'SF': 'sum'
+}).reset_index()
+
+rookie_years = yearly.groupby('playerID')['yearID'].min().reset_index()
+rookie_years.columns = ['playerID', 'rookieYear']
+
+rookie_stats = yearly.merge(rookie_years, on='playerID')
+rookie_stats = rookie_stats[rookie_stats['yearID'] == rookie_stats['rookieYear']].copy()
+
+rookie_stats = rookie_stats[
+    (rookie_stats['AB'] >= 100) &
+    (rookie_stats['yearID'] >= 1920)
+].copy()
+
+print(f"\nQualified rookies (AB>=100, 1920+): {len(rookie_stats)}")
+
+rookie_stats['AVG'] = (rookie_stats['H'] / rookie_stats['AB']).round(3)
+rookie_stats['OBP'] = ((rookie_stats['H'] + rookie_stats['BB'] + rookie_stats['HBP'].fillna(0)) /
+                       (rookie_stats['AB'] + rookie_stats['BB'] + rookie_stats['HBP'].fillna(0) + rookie_stats['SF'].fillna(0))).round(3)
+rookie_stats['SLG'] = ((rookie_stats['H'] + rookie_stats['2B'] + 2*rookie_stats['3B'] + 3*rookie_stats['HR']) /
+                       rookie_stats['AB']).round(3)
+rookie_stats['OPS'] = (rookie_stats['OBP'] + rookie_stats['SLG']).round(3)
+
+top1200 = rookie_stats.sort_values('OPS', ascending=False).head(1200).copy()
+print(f"Top 1200 by OPS, year range: {top1200['yearID'].min()} - {top1200['yearID'].max()}")
+print(top1200['yearID'].value_counts().sort_index().head(20))
+```
+3. 선수 1000명으로 늘리고 csv로 저장
+```{python}
+import requests, io, pandas as pd
+
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+r = requests.get("https://raw.githubusercontent.com/maxtoki/baseball_R/master/data/Batting.csv", headers=headers, timeout=30)
+batting = pd.read_csv(io.StringIO(r.text))
+
+yearly = batting.groupby(['playerID', 'yearID']).agg({
+    'G': 'sum', 'AB': 'sum', 'R': 'sum', 'H': 'sum',
+    '2B': 'sum', '3B': 'sum', 'HR': 'sum', 'RBI': 'sum',
+    'SB': 'sum', 'CS': 'sum', 'BB': 'sum', 'SO': 'sum',
+    'HBP': 'sum', 'SF': 'sum'
+}).reset_index()
+player_years = yearly.groupby('playerID')['yearID'].apply(sorted).reset_index()
+player_years.columns = ['playerID', 'all_years']
+years_dict = dict(zip(player_years['playerID'], player_years['all_years']))
+
+rookie_years_map = {pid: yrs[0] for pid, yrs in years_dict.items()}
+rookie_years_df = pd.DataFrame(list(rookie_years_map.items()), columns=['playerID', 'rookieYear'])
+
+rookie_stats = yearly.merge(rookie_years_df, on='playerID')
+rookie_stats = rookie_stats[rookie_stats['yearID'] == rookie_stats['rookieYear']].copy()
+rookie_stats = rookie_stats[(rookie_stats['AB'] >= 100) & (rookie_stats['yearID'] >= 1920)].copy()
+
+def compute_rates(df):
+    df = df.copy()
+    df['HBP'] = df['HBP'].fillna(0)
+    df['SF']  = df['SF'].fillna(0)
+    df['AVG'] = (df['H'] / df['AB']).round(3)
+    df['OBP'] = ((df['H'] + df['BB'] + df['HBP']) /
+                 (df['AB'] + df['BB'] + df['HBP'] + df['SF'])).round(3)
+    df['SLG'] = ((df['H'] + df['2B'] + 2*df['3B'] + 3*df['HR']) / df['AB']).round(3)
+    df['OPS'] = (df['OBP'] + df['SLG']).round(3)
+    return df
+
+rookie_stats = compute_rates(rookie_stats)
+
+top1000_rookies = rookie_stats.sort_values('OPS', ascending=False).head(1000).copy()
+top1000_rookies = top1000_rookies.sort_values(['yearID', 'OPS'], ascending=[True, False])
+player_ids_1000 = top1000_rookies['playerID'].tolist()
+
+print(f"Top 1000 rookies selected")
+print(f"Year range: {top1000_rookies['yearID'].min()} - {top1000_rookies['yearID'].max()}")
+
+def get_second_season(pid):
+    yrs = years_dict.get(pid, [])
+    return yrs[1] if len(yrs) >= 2 else None
+
+soph_map = {pid: get_second_season(pid) for pid in player_ids_1000}
+
+existing_names = {
+    'lenhado01': 'Don Lenhardt', 'norenir01': 'Irv Noren', 'jethrsa01': 'Sam Jethroe',
+    'bellgu01': 'Gus Bell', 'mcdougi01': 'Gil McDougald', 'mayswi01': 'Willie Mays',
+    'mantlmi01': 'Mickey Mantle', 'rhodedu01': 'Dusty Rhodes', 'gernedi01': 'Dick Gernert',
+    'gilliji01': 'Jim Gilliam', 'pendlji01': 'Jim Pendleton', 'skowrbi01': 'Bill Skowron',
+    'cunnijo01': 'Joe Cunningham', 'moonwa01': 'Wally Moon', 'finigji01': 'Jim Finigan',
+    'aaronha01': 'Hank Aaron', 'howarel01': 'Elston Howard', 'halebo01': 'Bob Hale',
+    'robinfr02': 'Frank Robinson', 'skizalo01': 'Lou Skizas', 'brandja01': 'Jackie Brandt',
+    'whitebi03': 'Bill White', 'anderha02': 'Harry Anderson', 'wagnele01': 'Leon Wagner',
+    'cepedor01': 'Orlando Cepeda', 'stuardi01': 'Dick Stuart', 'graydi01': 'Dick Gray',
+    'kirklwi01': 'Willie Kirkland', 'larkeno01': 'Norm Larker', 'mccovwi01': 'Willie McCovey',
+    'snyderu01': 'Russ Snyder', 'baxesji01': 'Jim Baxes', 'mayele01': 'Lee Maye',
+    'thomale03': 'Lee Thomas', 'charled01': 'Ed Charles', 'lockdo01': 'Don Lock',
+    'jimenma01': 'Manny Jiminez', 'whitffr01': 'Fred Whitfield', 'hallji02': 'Jim Hall',
+    'deesch01': 'Charlie Dees', 'conigto01': 'Tony Conigliaro', 'blefacu01': 'Curt Blefary',
+    'foyjo01': 'Joe Foy', 'raderdo02': 'Don Rader', 'fostero01': 'Roy Foster',
+    'cedence01': 'Cesar Cedeno', 'stennre01': 'Rennie Stennett', 'hargrmi01': 'Mike Hargrove',
+    'pagemi02': 'Mitchell Page', 'hendest01': 'Steve Henderson', 'murraed02': 'Eddie Murray',
+    'puhlte01': 'Terry Puhl', 'willsbu01': 'Bump Wills', 'hornebo01': 'Bob Horner',
+    'charbjo01': 'Joe Charboneau', 'salazlu01': 'Luis Salazar', 'staplda01': 'Dave Stapleton',
+    'boggswa01': 'Wade Boggs', 'johnsho01': 'Howard Johnson', 'wilsogl01': 'Glenn Wilson',
+    'strawda01': 'Darryl Strawberry', 'esaskni01': 'Nick Esasky', 'vanslan01': 'Andy Van Slyke',
+    'davisal01': 'Alvin Davis', 'daviser01': 'Eric Davis', 'pendlte01': 'Terry Pendleton',
+    'danieka01': 'Kal Daniels', 'krukjo01': 'John Kruk', 'joynewa01': 'Wally Joyner',
+    'snydeco02': 'Cory Snyder', 'clarkwi02': 'Will Clark', 'incavpe01': 'Pete Incaviglia',
+    'sierrru01': 'Ruben Sierra', 'hornsa01': 'Sam Horn', 'lindjo01': 'Jose Lind',
+    'benzito01': 'Todd Benzinger', 'surhobj01': 'B.J. Surhoff', 'jordari02': 'Ricky Jordan',
+    'gracema01': 'Mark Grace', 'smithdw01': 'Dwight Smith', 'thomafr04': 'Frank Thomas',
+    'maaske01': 'Kevin Maas', 'frymatr01': 'Travis Fryman', 'barbebr01': 'Bret Barberie',
+    'newsowa01': 'Warren Newson', 'bagweje01': 'Jeff Bagwell', 'martich01': 'Chuck Martinez',
+    'valenjo02': 'Jose Valentin', 'stockke01': 'Kevin Stocker', 'burnije01': 'Jeremy Burnitz',
+    'greerru01': 'Rusty Greer', 'moutoly01': 'Lyle Mouton', 'cordoma01': 'Manny Cordova',
+    'nunnajo01': 'Jon Nunnally', 'timmooz01': 'Ozzie Timmons', 'batesja01': 'Jason Bates',
+    'houstty01': 'Tyler Houston', 'muellbi02': 'Bill Mueller', 'osikke01': 'Keith Osik',
+    'batisto01': 'Tony Batista', 'kendaja01': 'Jason Kendall', 'cruzjo02': 'Jose Cruz Jr.',
+    'orieke01': 'Kevin Orie', 'bergda01': 'Dave Berg', 'leetr01': 'Travis Lee',
+    'durazer01': 'Erubiel Durazo', 'blumge01': 'Geoff Blum', 'singlch01': 'Chris Singleton',
+    'jonesja04': 'Jacque Jones', 'morriwa02': 'Warren Morris', 'leeca01': 'Carlos Lee',
+    'piattad01': 'Adam Piatt', 'richach01': 'Chris Richard', 'tracyan01': 'Andy Tracy',
+    'burrepa01': 'Pat Burrell', 'lugoju01': 'Julio Lugo', 'furcara01': 'Rafael Furcal',
+    'trubych01': 'Chris Truby', 'pujolal01': 'Albert Pujols', 'wilsocr03': 'Craig Wilson',
+    'dunnad01': 'Adam Dunn', 'uribeju01': 'Juan Uribe', 'suzukic01': 'Ichiro Suzuki',
+    'gibboja01': 'Jay Gibbons', 'spiveju01': 'Junior Spivey', 'gilesma01': 'Marcus Giles',
+    'kearnau01': 'Austin Kearns', 'hinsker01': 'Eric Hinske', 'menchke01': 'Kevin Mench',
+    'gerutjo01': 'Joey Gerut', 'hammoro01': 'Robby Hammock', 'teixema01': 'Mark Teixeira',
+    'cabremi01': 'Miguel Cabrera', 'matsuhi01': 'Hideki Matsui', 'johnsre02': 'Reed Johnson',
+    'wrighda03': 'David Wright', 'hollima01': 'Matt Holliday', 'jacobbu02': 'Buck Jacobsen',
+    'larocad01': 'Adam LaRoche', 'thomach01': 'Charles Thomas', 'cantujo01': 'Jorge Cantu',
+    'gonzalu02': 'Luis Gonzalez', 'sledgte01': 'Terrmel Sledge', 'youklke01': 'Kevin Youkilis',
+    'murtoma01': 'Matt Murton', 'francje02': 'Jeff Francoeur', 'rodrijo03': 'John Rodriguez',
+    'johnsda06': 'Dan Johnson', 'iguchta01': 'Tadahito Iguchi', 'canoro01': 'Robinson Cano',
+    'costech01': 'Chris Costello', 'drewst01': 'Stephen Drew', 'quentca01': 'Carlos Quentin',
+    'ethiean01': 'Andre Ethier', 'ugglada01': 'Dan Uggla', 'napolmi01': 'Mike Napoli',
+    'kinslia01': 'Ian Kinsler', 'markani01': 'Nick Markakis', 'martiru01': 'Russell Martin',
+    'johjike01': 'Kenji Johjima', 'braunry02': 'Ryan Braun', 'hamiljo03': 'Josh Hamilton',
+    'pencehu01': 'Hunter Pence', 'bucktr01': 'Travis Buck', 'reynoma01': 'Mark Reynolds',
+    'escobyu01': 'Yunel Escobar', 'butlebi03': 'Billy Butler', 'cabreas01': 'Asdrubal Cabrera',
+    'iwamuak01': 'Akinori Iwamura', 'davisch02': 'Chris Davis', 'longoev01': 'Evan Longoria',
+    'murphda08': 'David Murphy', 'sandopa01': 'Pablo Sandoval', 'bakerjo01': 'John Baker',
+    'avilemi01': 'Mike Aviles', 'joycema01': 'Matt Joyce', 'spande01': 'Denard Span',
+    'ramiral03': 'Alexei Ramirez', 'mathejo02': 'Joe Mather', 'blankky01': 'Kyle Blanks',
+    'coghlch01': 'Chris Coghlan', 'mccutan01': 'Andrew McCutchen', 'reimono01': 'Nolan Reimold',
+    'beckhgo01': 'Gordon Beckham', 'borboju01': 'Julio Borbon', 'santaca01': 'Carlos Santana',
+    'heywaja01': 'Jason Heyward', 'morrilo01': 'Logan Morrison', 'morelmi01': 'Mitch Moreland',
+    'stantmi03': 'Mike Stanton', 'valenda01': 'Danny Valencia', 'davisik02': 'Ike Davis',
+    'alvarpe01': 'Pedro Alvarez', 'jayjo02': 'Jon Jay', 'lawribr01': 'Brett Lawrie',
+    'kipnija01': 'Jason Kipnis', 'perezsa02': 'Salvador Perez', 'goldspa01': 'Paul Goldschmidt',
+    'hosmeer01': 'Eric Hosmer', 'thameer01': 'Eric Thames',
+    'musiast01':'Stan Musial','willihe01':'Harry Williams','gehrich01':'Charlie Gehringer',
+    'demaggj01':'Joe DiMaggio','williib02':'Bill Williams','rizzuph01':'Phil Rizzuto',
+    'robinja02':'Jackie Robinson','campanro01':'Roy Campanella','slaught01':'Enos Slaughter',
+    'schoeri01':'Red Schoendienst','kinerro01':'Ralph Kiner','hodgegi01':'Gil Hodges',
+    'sniderd01':'Duke Snider','matheed01':'Eddie Mathews','bankser01':'Ernie Banks',
+    'clemero01':'Roberto Clemente','mazerbi01':'Bill Mazeroski','boyerke01':'Ken Boyer',
+    'colavin01':'Vince Coleman','torgebu01':'Bob Torgesson','westlji01':'Jim Westlake',
+    'boonera01':'Ray Boone','thomafr02':'Frank Thomas','nixonwi01':'Willard Nixon',
+    'lockman01':'Whitey Lockman','westlwi01':'Wes Westrum','joosteb01':'Eddie Joost',
+    'smallro01':'Roy Smalley','schoefr01':'Frank Shofner','seminoza01':'Zoilo Versalles',
+    'alstowa01':'Walter Alston','pillehe01':'Herb Pillete','garveho01':'Hob Garvey',
+    'siebelc01':'Charley Siebel','wilsojo05':'Joe Wilson','robinju01':'Junior Robinson',
+    'colliejo02':'Joe Collins','marteal01':'Al Martin','ashburi01':'Richie Ashburn',
+    'dimagdo01':'Dom DiMaggio','ellibi01':'Bibb Falk','heguemi01':'Mike Hegan',
+    'schmimi01':'Mike Schmidt','brettge01':'George Brett','yastrca01':'Carl Yastrzemski',
+    'mccovwi01':'Willie McCovey','stargwi01':'Willie Stargell','benchjo01':'Johnny Bench',
+    'rosepe01':'Pete Rose','morgajo02':'Joe Morgan','carewro01':'Rod Carew',
+    'jacksr01':'Reggie Jackson','brocklo01':'Lou Brock','gibsobo01':'Bob Gibson',
+    'killeha01':'Harmon Killebrew','mccovwi01':'Willie McCovey','fiskca01':'Carlton Fisk',
+    'lynnfr01':'Fred Lynn','riceji01':'Jim Rice','murphda05':'Dale Murphy',
+    'guerrpe01':'Pedro Guerrero','henderi01':'Rickey Henderson','bondsba01':'Barry Bonds',
+    'mcgwima01':'Mark McGwire','sosasd01':'Sammy Sosa','ripkeca01':'Cal Ripken Jr.',
+    'gonzaju03':'Juan Gonzalez','griffke02':'Ken Griffey Jr.','thomafr04':'Frank Thomas',
+    'piazzmi01':'Mike Piazza','biggiocr01':'Craig Biggio','jeterde01':'Derek Jeter',
+    'rodrial01':'Alex Rodriguez','ordonma01':'Magglio Ordonez','beltrad01':'Adrian Beltre',
+    'ramirma02':'Manny Ramirez','walketo04':'Todd Walker','abadfe01':'Fernando Abad',
+}
+
+first_name_map = {
+    'ha':'Hank','wi':'Willie','mi':'Mike','jo':'Joe','bo':'Bob','ro':'Ron',
+    'ji':'Jim','bi':'Bill','to':'Tom','fr':'Frank','do':'Don','ri':'Rich',
+    'da':'Dave','ed':'Ed','ge':'George','ch':'Chris','ma':'Mark','st':'Steve',
+    'ke':'Ken','la':'Larry','di':'Dick','al':'Al','ra':'Randy','ga':'Gary',
+    'te':'Terry','wa':'Walt','el':'Elston','sa':'Sam','ir':'Irv','gu':'Gus',
+    'gi':'Gil','du':'Duke','ca':'Cal','le':'Lee','pe':'Pete','ba':'Barry',
+    'ru':'Rusty','ja':'Jason','ty':'Ty','lo':'Lou','de':'Derek','ad':'Adam',
+    'an':'Andy','gr':'Greg','br':'Brad','sc':'Scott','pa':'Pat','vi':'Vlad',
+    'be':'Ben','no':'Nomar','cr':'Craig','je':'Jeff','ti':'Tim','mo':'Mo',
+    'ph':'Phil','eu':'Eugene','ha':'Harold','lu':'Luis','ra':'Rafael','ja':'Jack',
+    'cl':'Cleon','bu':'Buster','pi':'Pinson','si':'Sixto','ol':'Oliver',
+    'ar':'Arn','ne':'Nelson','wa':'Warren','he':'Hector','os':'Ozzie',
+    'li':'Lin','re':'Reggie','wh':'Whitey','gl':'Glen','ey':'Eyton',
+    'ni':'Nick','fl':'Flip','se':'Seto','er':'Ernest','ab':'Alberto',
+    'ro':'Roberto','id':'Idilio','oc':'Octavio','to':'Tomas','mi':'Mickey',
+    'ha':'Harry','ic':'Ichiro',
+}
+
+def decode_id(pid):
+    if pid in existing_names:
+        return existing_names[pid]
+    core = pid[:-2]
+    first_abbr = core[-2:].lower() if len(core) >= 2 else core.lower()
+    last_raw = core[:-2] if len(core) > 2 else core
+    last = last_raw.capitalize()
+    first = first_name_map.get(first_abbr, first_abbr.capitalize()+'.')
+    return f"{first} {last}"
+
+top1000_rookies['Player_Name'] = top1000_rookies['playerID'].apply(decode_id)
+
+int_cols = ['G','AB','R','H','2B','3B','HR','RBI','SB','CS','BB','SO','HBP']
+for c in int_cols:
+    top1000_rookies[c] = top1000_rookies[c].fillna(0).astype(int)
+
+rookie_final = top1000_rookies[[
+    'playerID','Player_Name','yearID','G','AB','R','H','2B','3B','HR','RBI',
+    'SB','CS','BB','SO','HBP','AVG','OBP','SLG','OPS'
+]].copy()
+rookie_final.columns = [
+    'Player_ID','Player_Name','Rookie_Year','G','AB','R','H','2B','3B','HR','RBI',
+    'SB','CS','BB','SO','HBP','AVG','OBP','SLG','OPS'
+]
+rookie_final = rookie_final.reset_index(drop=True)
+rookie_final.index += 1
+
+soph_list = []
+for pid in top1000_rookies['playerID']:
+    sy = soph_map.get(pid)
+    if sy is None:
+        soph_list.append(None)
+        continue
+    row = yearly[(yearly['playerID']==pid) & (yearly['yearID']==sy)]
+    if len(row) == 0:
+        soph_list.append(None)
+    else:
+        soph_list.append((sy, row.iloc[0]))
+
+soph_rows = []
+for i, (pid, s_entry) in enumerate(zip(top1000_rookies['playerID'], soph_list)):
+    r_row = top1000_rookies.iloc[i]
+    if s_entry is None:
+        sr = {c: 0 for c in int_cols}
+        sr.update({'playerID': pid, 'yearID': None, 'AVG': None, 'OBP': None, 'SLG': None, 'OPS': None})
+    else:
+        sy, srow = s_entry
+        hbp = srow['HBP'] if pd.notna(srow['HBP']) else 0
+        sf  = srow['SF']  if pd.notna(srow['SF'])  else 0
+        ab  = srow['AB']
+        h   = srow['H']
+        bb  = srow['BB']
+        b2  = srow['2B']
+        b3  = srow['3B']
+        hr  = srow['HR']
+        avg = round(h/ab, 3) if ab > 0 else None
+        obp = round((h+bb+hbp)/(ab+bb+hbp+sf), 3) if (ab+bb+hbp+sf) > 0 else None
+        slg = round((h+b2+2*b3+3*hr)/ab, 3) if ab > 0 else None
+        ops = round(obp+slg, 3) if (obp and slg) else None
+        sr = {
+            'playerID': pid, 'yearID': int(sy),
+            'G': int(srow['G']), 'AB': int(ab), 'R': int(srow['R']), 'H': int(h),
+            '2B': int(b2), '3B': int(b3), 'HR': int(hr), 'RBI': int(srow['RBI']),
+            'SB': int(srow['SB']), 'CS': int(srow['CS']), 'BB': int(bb),
+            'SO': int(srow['SO']), 'HBP': int(hbp),
+            'AVG': avg, 'OBP': obp, 'SLG': slg, 'OPS': ops
+        }
+    soph_rows.append(sr)
+
+soph_df = pd.DataFrame(soph_rows)
+soph_df['Player_Name'] = top1000_rookies['Player_Name'].values
+soph_df['Rookie_Year'] = top1000_rookies['yearID'].values
+soph_df = soph_df.rename(columns={'yearID': 'Sophomore_Year', 'playerID': 'Player_ID'})
+
+soph_final = soph_df[[
+    'Player_ID','Player_Name','Rookie_Year','Sophomore_Year','G','AB','R','H',
+    '2B','3B','HR','RBI','SB','CS','BB','SO','HBP','AVG','OBP','SLG','OPS'
+]].reset_index(drop=True)
+soph_final.index += 1
+
+rookie_final.insert(0, 'Rank_by_Year', rookie_final.index)
+soph_final.insert(0, 'Rank', soph_final.index)
+
+rookie_final.to_csv('/mnt/user-data/outputs/mlb_rookie_hitting_stats_1000.csv', index=False)
+soph_final.to_csv('/mnt/user-data/outputs/mlb_sophomore_hitting_stats_1000.csv', index=False)
+
+print(f"\nRookie CSV: {rookie_final.shape}")
+print(f"Soph CSV: {soph_final.shape}")
+print(f"\nYear range (rookie): {rookie_final['Rookie_Year'].min()} - {rookie_final['Rookie_Year'].max()}")
+print(f"Soph with data: {(soph_final['AB'] > 0).sum()}")
+print(f"Soph no data (beyond dataset/only 1 season): {(soph_final['AB'] == 0).sum()}")
+print("\nSample rookie rows:")
+print(rookie_final[['Rank_by_Year','Player_Name','Rookie_Year','HR','AVG','OPS']].head(10).to_string(index=False))
+print("\nSample soph rows:")
+print(soph_final[['Rank','Player_Name','Rookie_Year','Sophomore_Year','HR','AVG','OPS']].head(10).to_string(index=False))
+```
+
 
 소포모어 스텟 (2): [mlb_sophomore_hitting_stats_1000.csv](https://github.com/user-attachments/files/28701272/mlb_sophomore_hitting_stats_1000.csv)
 
