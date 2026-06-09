@@ -1141,6 +1141,9 @@ print(soph_final[['Rank','Player_Name','Rookie_Year','Sophomore_Year','HR','AVG'
 
 루키 스텟 (2): [mlb_rookie_hitting_stats_1000.csv](https://github.com/user-attachments/files/28701257/mlb_rookie_hitting_stats_1000.csv)
 
+Modern stat: [mlb_jinx_advanced_data.csv](https://github.com/user-attachments/files/28736296/mlb_jinx_advanced_data.csv)
+
+
 # Methodology
 1. 소포모어 징크스를 겪은 선수의 기준을 정하기 위해 선형회귀를 활용한다.
 2. 로지스틱 회귀를 활용하여 징크스를 겪은 선수들과 그렇지 않은 선수들을 나눈 요인을 찾아본다.
@@ -1359,11 +1362,244 @@ print("Saved. JSON size:", len(json.dumps(out)))
 
 다음은 이전과 같은 로지스틱 회귀 모델과 새 데이터셋을 활용하여 모델을 실행한 결과이다.
 
+모델:
+```{python}
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+import json, warnings
+warnings.filterwarnings('ignore')
+
+rookie = pd.read_csv('/mnt/user-data/uploads/mlb_rookie_hitting_stats_1000.csv')
+soph   = pd.read_csv('/mnt/user-data/uploads/mlb_sophomore_hitting_stats_1000.csv')
+
+merged = rookie.merge(
+    soph[['Player_ID','Sophomore_Year','G','AB','R','H','2B','3B','HR','RBI',
+          'SB','CS','BB','SO','HBP','AVG','OBP','SLG','OPS']],
+    on='Player_ID', suffixes=('_r','_s')
+)
+merged = merged[(merged['AB_s'] > 0) & (merged['OPS_s'] > 0) & (merged['OPS_r'] > 0)].copy()
+print(f"Merged & filtered: {len(merged)} players")
+
+lr = LinearRegression().fit(merged[['OPS_r']], merged['OPS_s'])
+slope     = lr.coef_[0]
+intercept = lr.intercept_
+r2        = r2_score(merged['OPS_s'], lr.predict(merged[['OPS_r']]))
+
+merged['predicted_soph_OPS'] = lr.predict(merged[['OPS_r']])
+merged['residual']           = merged['OPS_s'] - merged['predicted_soph_OPS']
+
+res_mean = merged['residual'].mean()
+res_std  = merged['residual'].std()
+threshold = res_mean - 1.0 * res_std   # −1σ below mean residual
+
+merged['jinxed'] = (merged['residual'] < threshold).astype(int)
+n_jinxed = merged['jinxed'].sum()
+
+print(f"\n── Linear Regression ──────────────────────────")
+print(f"  Equation : Soph_OPS = {slope:.4f} × Rookie_OPS + {intercept:.4f}")
+print(f"  R²       : {r2:.4f}")
+print(f"  Res mean : {res_mean:.4f}")
+print(f"  Res std  : {res_std:.4f}")
+print(f"  Threshold: residual < {threshold:.4f}  (mean − 1σ)")
+print(f"  Jinxed   : {n_jinxed} / {len(merged)}  ({n_jinxed/len(merged)*100:.1f}%)")
+
+merged['HR_rate']    = (merged['HR_r']  / merged['AB_r']).round(4)
+merged['BB_rate']    = (merged['BB_r']  / merged['AB_r']).round(4)
+merged['SO_rate']    = (merged['SO_r']  / merged['AB_r']).round(4)
+merged['ISO']        = (merged['SLG_r'] - merged['AVG_r']).round(4)
+merged['partial']    = (merged['AB_r'] < 300).astype(int)
+merged['BABIP']      = ((merged['H_r'] - merged['HR_r']) /
+                        (merged['AB_r'] - merged['SO_r'] - merged['HR_r'] + 1)
+                       ).clip(0,1).round(4)
+merged['SB_rate']    = (merged['SB_r'] / (merged['AB_r']+1)).round(4)
+merged['ops_change'] = (merged['OPS_s'] - merged['OPS_r']).round(4)
+
+features    = ['OPS_r','HR_rate','BB_rate','SO_rate','ISO','partial','BABIP','AVG_r','SB_rate']
+feat_labels = ['Rookie OPS','HR Rate','BB Rate','SO Rate','ISO (Power)',
+               'Partial Season','BABIP','Batting Avg','SB Rate']
+
+df = merged[features + ['jinxed','Player_Name','Rookie_Year',
+                         'OPS_r','OPS_s','predicted_soph_OPS','residual',
+                         'ops_change','HR_rate','BB_rate','SO_rate','partial','BABIP','ISO','SB_rate']
+           ].dropna().copy()
+X = df[features].values
+y = df['jinxed'].values
+
+print(f"\n── Feature matrix: {X.shape}, jinxed={y.sum()} ({y.mean()*100:.1f}%)")
+
+scaler = StandardScaler()
+X_sc   = scaler.fit_transform(X)
+
+model = LogisticRegression(class_weight='balanced', max_iter=2000, random_state=42)
+model.fit(X_sc, y)
+
+cv     = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv_auc = cross_val_score(model, X_sc, y, cv=cv, scoring='roc_auc')
+cv_f1  = cross_val_score(model, X_sc, y, cv=cv, scoring='f1')
+cv_acc = cross_val_score(model, X_sc, y, cv=cv, scoring='accuracy')
+
+y_prob = model.predict_proba(X_sc)[:,1]
+y_pred = model.predict(X_sc)
+cm     = confusion_matrix(y, y_pred)
+auc    = roc_auc_score(y, y_prob)
+fpr, tpr, _ = roc_curve(y, y_prob)
+
+print(f"\n── Logistic Regression Results ────────────────")
+print(f"  Train AUC : {auc:.3f}")
+print(f"  CV AUC    : {cv_auc.mean():.3f} ± {cv_auc.std():.3f}")
+print(f"  CV F1     : {cv_f1.mean():.3f}")
+print(f"  CV Acc    : {cv_acc.mean():.3f}")
+print(f"\n  Confusion matrix:\n{cm}")
+print(f"\n  Coefficients:")
+coefs = sorted(zip(feat_labels, model.coef_[0]), key=lambda x: x[1])
+for f,c in coefs:
+    print(f"    {f:20s}  coef={c:+.4f}  OR={np.exp(c):.3f}")
+
+df['jinx_prob']        = y_prob
+df['predicted_jinxed'] = y_pred
+
+ops_range  = np.linspace(merged['OPS_r'].min()-0.02, merged['OPS_r'].max()+0.02, 80)
+reg_line   = slope * ops_range + intercept
+jinx_line  = reg_line + threshold
+
+players_out = []
+for idx, row in df.iterrows():
+    players_out.append({
+        'name':    row.Player_Name,
+        'year':    int(row.Rookie_Year),
+        'ops_r':   round(float(row.OPS_r),   3),
+        'ops_s':   round(float(df.at[idx,'OPS_s']),   3),
+        'pred':    round(float(row.predicted_soph_OPS), 3),
+        'resid':   round(float(row.residual), 4),
+        'actual':  int(row.jinxed),
+        'predicted': int(row.predicted_jinxed),
+        'prob':    round(float(row.jinx_prob),4),
+        'hr_rate': round(float(row.HR_rate),  4),
+        'bb_rate': round(float(row.BB_rate),  4),
+        'so_rate': round(float(row.SO_rate),  4),
+        'partial': int(row.partial),
+        'babip':   round(float(row.BABIP),    3),
+        'iso':     round(float(row.ISO),      3),
+        'sb_rate': round(float(row.SB_rate),  4),
+        'ops_chg': round(float(row.ops_change),3),
+    })
+
+out = {
+    'n': int(len(df)), 'n_jinxed': int(y.sum()),
+    'pct_jinxed': round(float(y.mean()*100),1),
+    'slope': round(float(slope),5), 'intercept': round(float(intercept),5),
+    'r2': round(float(r2),4),
+    'res_mean': round(float(res_mean),4), 'res_std': round(float(res_std),4),
+    'threshold': round(float(threshold),4),
+    'auc': round(float(auc),3),
+    'cv_auc': round(float(cv_auc.mean()),3), 'cv_auc_std': round(float(cv_auc.std()),3),
+    'cv_f1': round(float(cv_f1.mean()),3),   'cv_acc': round(float(cv_acc.mean()),3),
+    'intercept_lr': round(float(model.intercept_[0]),4),
+    'cm': cm.tolist(),
+    'coefs': [{'f':f,'c':round(float(c),4),'or':round(float(np.exp(c)),4)} for f,c in coefs],
+    'roc_fpr': [round(float(v),4) for v in fpr[:200]],
+    'roc_tpr': [round(float(v),4) for v in tpr[:200]],
+    'reg_x':   [round(float(v),4) for v in ops_range],
+    'reg_y':   [round(float(v),4) for v in reg_line],
+    'jinx_y':  [round(float(v),4) for v in jinx_line],
+    'scatter': [{'x':round(float(r.OPS_r),3),'y':round(float(df.at[i,'OPS_s']),3),
+                 'j':int(r.jinxed),'n':r.Player_Name,'yr':int(r.Rookie_Year),
+                 'chg':round(float(r.ops_change),3)}
+                for i,r in df.iterrows()],
+    'players': players_out,
+}
+
+with open('/tmp/results_1000.json','w') as f:
+    json.dump(out, f)
+print(f"\nJSON saved, size: {len(json.dumps(out)):,} bytes")
+```
+
 <img width="917" height="282" alt="jinx 1000" src="https://github.com/user-attachments/assets/b4b8c02f-90da-42a6-b046-773bb9431d67" />
 <img width="902" height="195" alt="jinx pred" src="https://github.com/user-attachments/assets/0ca2be38-d1c9-48b3-a320-3ffba9034402" />
 <img width="952" height="682" alt="jinx acc 1000" src="https://github.com/user-attachments/assets/780e29c7-a9d0-4f4e-9246-75a301d68905" />
 
 위의 결과에서 알 수 있듯이, 데이터셋의 크기를 늘렸다고 해서 모델의 정확도가 높아진 것은 아니다. 위양성 비율은 여전히 높고, 정확도는 0.68 정도로 이전과 거의 일치하는 수치이다. 이에 더해, 기존의 결과에서 소포모어 징크스를 겪을 확률을 높이는 피처들이 이번에는 반대로 낮출 확률로 분석되거나 이 반대의 경우도 다수 존재했음을 확인할 수 있다. 결과에 일관된 영향을 미친 피처들은 BB rate(긍정적)와 Rookie OPS(부정적) 두 가지 뿐이었다. 따라서, 이 두 피처들을 제외한 나머지 피처들은 모델의 예측 정확도에 유의미한 영향을 주지 않는다는 결론을 내렸다.
+
+그러므로 classic stat(타율, 홈런 등)이 아닌 modern stat(평균 타구 속도, 베럴 타구 비율 등)이 포함된 데이터셋을 사용하면 해당 피처들은 소포모어 징크스 발현과 유의미한 관계를 갖는지, 또한 모델의 정확도가 올라갈 것인지 확인해보고자 다른 데이터셋으로 다시 모델을 실행해보았다.
+
+모델:
+```{python}
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (classification_report, confusion_matrix,
+                             roc_auc_score, roc_curve, ConfusionMatrixDisplay)
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv('/mnt/user-data/uploads/mlb_jinx_advanced_data.csv')
+
+(overperformance vs expected)
+features = [
+    'woba_year1',                       # actual performance level
+    'est_woba_year1',                   # skill-based expected performance
+    'est_woba_minus_woba_diff_year1',   # luck component (actual - expected)
+    'ba_year1',
+    'est_ba_minus_ba_diff_year1',       # BA luck
+    'slg_year1',
+    'est_slg_minus_slg_diff_year1',     # SLG luck
+    'barrel_rate_year1',
+    'avg_hit_speed_year1',
+    'pa_year1',
+]
+
+X = df[features]
+y = df['is_jinx']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y)
+
+scaler = StandardScaler()
+X_train_s = scaler.fit_transform(X_train)
+X_test_s  = scaler.transform(X_test)
+
+model = LogisticRegression(max_iter=1000, random_state=42)
+model.fit(X_train_s, y_train)
+
+y_pred      = model.predict(X_test_s)
+y_pred_prob = model.predict_proba(X_test_s)[:, 1]
+
+cv_scores = cross_val_score(model, scaler.fit_transform(X), y, cv=5, scoring='roc_auc')
+
+print("=== Logistic Regression – MLB Jinx Prediction ===")
+print(f"\nTest AUC-ROC : {roc_auc_score(y_test, y_pred_prob):.4f}")
+print(f"5-Fold CV AUC: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+print("\n--- Classification Report ---")
+print(classification_report(y_test, y_pred))
+
+coef_df = pd.DataFrame({
+    'Feature': features,
+    'Coefficient': model.coef_[0],
+    'Odds Ratio': np.exp(model.coef_[0])
+}).sort_values('Coefficient', key=abs, ascending=False)
+print("\n--- Feature Coefficients ---")
+print(coef_df.to_string(index=False))
+
+np.save('/tmp/fpr.npy', roc_curve(y_test, y_pred_prob)[0])
+np.save('/tmp/tpr.npy', roc_curve(y_test, y_pred_prob)[1])
+np.save('/tmp/auc.npy', [roc_auc_score(y_test, y_pred_prob)])
+coef_df.to_csv('/tmp/coef_df.csv', index=False)
+cm = confusion_matrix(y_test, y_pred)
+np.save('/tmp/cm.npy', cm)
+print("\nArrays saved.")
+```
+
+<img width="852" height="288" alt="modern" src="https://github.com/user-attachments/assets/478a875e-78d7-464d-a59f-8e668228569e" />
+
+동일한 로지스틱 회귀 모델을 사용한 결과, 해당 모델의 정확도는 0.77 정도로 이전의 결과보다 더 높은 수치를 보였다. Classic stat보다는 modern stat이 소포모어 징크스와 더 밀접한 관계를 가짐을 보여준다고 해석할 수 있다. 특히, modern stat인 avg. exit speed(평균 타구 속도)가 더 높을수록 소포모어 징크스를 겪을 확률이 낮을 것으로 예측되는 유의미한 결과를 도출할 수 있었다.
 
 
 
