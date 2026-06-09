@@ -1351,11 +1351,20 @@ print("Saved. JSON size:", len(json.dumps(out)))
 
 다음은 위 모델의 결과를 보완하기 위해 구한 새 데이터셋을 사용해 Methodology의 1번부터 다시 실행한 결과이다.
 
-우선 징크스의 기준을 선형 회귀로 다시 잡은 결과이다.
+우선 징크스의 기준을 선형 회귀로 다시 구한 결과이다.
 
-<img width="527" height="526" alt="jinx threshold 1000" src="https://github.com/user-attachments/assets/a53cc7e0-5434-40c1-a31c-6b1b6a58b24b" />
+<img width="930" height="690" alt="jinx threshold 1000 2" src="https://github.com/user-attachments/assets/fa2d96fb-08e5-41f2-96cd-2a2ca36cfd39" />
 
 2년차 데이터가 존재하지 않는 선수들을 제외하여 총 924명의 선수를 분석하였다. 징크스의 기준은 OPS가 0.112 이상 감소한 것으로 정해졌고, 이는 첫 데이터셋을 활용했을 때와 같은 결과이다.
+
+다음은 이전과 같은 로지스틱 회귀 모델과 새 데이터셋을 활용하여 모델을 실행한 결과이다.
+
+<img width="917" height="282" alt="jinx 1000" src="https://github.com/user-attachments/assets/b4b8c02f-90da-42a6-b046-773bb9431d67" />
+<img width="902" height="195" alt="jinx pred" src="https://github.com/user-attachments/assets/0ca2be38-d1c9-48b3-a320-3ffba9034402" />
+<img width="952" height="682" alt="jinx acc 1000" src="https://github.com/user-attachments/assets/780e29c7-a9d0-4f4e-9246-75a301d68905" />
+
+위의 결과에서 알 수 있듯이, 데이터셋의 크기를 늘렸다고 해서 모델의 정확도가 높아진 것은 아니다. 위양성 비율은 여전히 높고, 정확도는 0.68 정도로 이전과 거의 일치하는 수치이다. 이에 더해, 기존의 결과에서 소포모어 징크스를 겪을 확률을 높이는 피처들이 이번에는 반대로 낮출 확률로 분석되거나 이 반대의 경우도 다수 존재했음을 확인할 수 있다. 결과에 일관된 영향을 미친 피처들은 BB rate(긍정적)와 Rookie OPS(부정적) 두 가지 뿐이었다. 따라서, 이 두 피처들을 제외한 나머지 피처들은 모델의 예측 정확도에 유의미한 영향을 주지 않는다는 결론을 내렸다.
+
 
 
 # Conclusion
